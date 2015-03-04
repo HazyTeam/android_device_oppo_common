@@ -1,3 +1,19 @@
+/*
+ * Copyright (C) 2015 The CyanogenMod Project
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package com.cyanogenmod.settings.device;
 
 import android.app.Activity;
@@ -25,26 +41,27 @@ import android.preference.PreferenceScreen;
 import android.view.MenuItem;
 import android.widget.Toast;
 
+import com.android.internal.util.cm.ScreenType;
+
 import com.cyanogenmod.settings.device.utils.Constants;
 
 @SuppressWarnings("deprecation")
-public class BluetoothInputSettings extends PreferenceActivity implements OnPreferenceChangeListener {
+public class BluetoothInputSettings extends PreferenceActivity
+        implements OnPreferenceChangeListener {
 
     static final String PROCESS_COMMAND_ACTION = "process_command";
     static final String COMMAND_KEY = "command";
 
     private static final int BLUETOOTH_REQUEST_CODE = 1;
     private static final int BLUETOOTH_PICKER_CODE = 2;
-    private static final String sOclickActionsCategory = "oclick_action_category";
-    private static final String sOclickAlertCategory = "oclick_alert_category";
-    private static final String sOclickConnectPreference = "oclick_connect";
+    private static final String CATEGORY_ACTIONS = "oclick_action_category";
+    private static final String CATEGORY_ALERT = "oclick_alert_category";
 
     private ProgressDialog mProgressDialog;
-    EventReceiver mReceiver;
-    boolean mConnected;
-    Ringtone mRingtone;
+    private boolean mConnected;
+    private Handler mHandler = new Handler();
 
-    class EventReceiver extends BroadcastReceiver {
+    private BroadcastReceiver mReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
             int commandKey = intent.getIntExtra(COMMAND_KEY, -1);
@@ -61,13 +78,13 @@ public class BluetoothInputSettings extends PreferenceActivity implements OnPref
                 break;
             }
         }
-    }
+    };
 
-    void setConnectedState(boolean enable) {
+    private void setConnectedState(boolean enable) {
         mConnected = enable;
-        findPreference(sOclickActionsCategory).setEnabled(enable);
-        findPreference(sOclickAlertCategory).setEnabled(enable);
-        findPreference(sOclickConnectPreference).setTitle(enable ?
+        findPreference(CATEGORY_ACTIONS).setEnabled(enable);
+        findPreference(CATEGORY_ALERT).setEnabled(enable);
+        findPreference(Constants.OCLICK_CONNECT_KEY).setTitle(enable ?
                 R.string.oclick_disconnect_string : R.string.oclick_connect_string);
     }
 
@@ -75,8 +92,7 @@ public class BluetoothInputSettings extends PreferenceActivity implements OnPref
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         addPreferencesFromResource(R.xml.oclick_panel);
-        mReceiver = new EventReceiver();
-        setConnectedState(OclickService.isConnectedToOclick);
+        setConnectedState(OclickService.sOclickConnected);
         getActionBar().setDisplayHomeAsUpEnabled(true);
     }
 
@@ -92,9 +108,10 @@ public class BluetoothInputSettings extends PreferenceActivity implements OnPref
     }
 
     private boolean isBluetoothOn() {
-        BluetoothManager bluetoothManager = (BluetoothManager) getSystemService(Context.BLUETOOTH_SERVICE);
+        BluetoothManager bluetoothManager =
+                (BluetoothManager) getSystemService(Context.BLUETOOTH_SERVICE);
         BluetoothAdapter bluetoothAdapter = bluetoothManager.getAdapter();
-        return (bluetoothAdapter != null && bluetoothAdapter.isEnabled());
+        return bluetoothAdapter != null && bluetoothAdapter.isEnabled();
     }
 
     private void startBluetootDevicePicker() {
@@ -133,14 +150,14 @@ public class BluetoothInputSettings extends PreferenceActivity implements OnPref
 
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
-        if ((requestCode == BLUETOOTH_REQUEST_CODE) && (resultCode == Activity.RESULT_OK)) {
+        if (requestCode == BLUETOOTH_REQUEST_CODE && resultCode == Activity.RESULT_OK) {
             // Start bluetooth device picker
             startBluetootDevicePicker();
         } else if (requestCode == BLUETOOTH_PICKER_CODE && isBluetoothOn()) {
             String dialogTitle = this.getString(R.string.oclick_dialog_title);
             String dialogMessage = this.getString(R.string.oclick_dialog_connecting_message);
             mProgressDialog = ProgressDialog.show(this, dialogTitle, dialogMessage, true);
-            new Handler().postDelayed(new Runnable() {
+            mHandler.postDelayed(new Runnable() {
                 @Override
                 public void run() {
                     if (mProgressDialog != null) {
@@ -157,6 +174,11 @@ public class BluetoothInputSettings extends PreferenceActivity implements OnPref
         IntentFilter filter = new IntentFilter();
         filter.addAction(PROCESS_COMMAND_ACTION);
         registerReceiver(mReceiver, filter);
+
+        // If running on a phone, remove padding around the listview
+        if (!ScreenType.isTablet(this)) {
+            getListView().setPadding(0, 0, 0, 0);
+        }
     }
 
     @Override
